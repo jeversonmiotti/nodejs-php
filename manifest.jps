@@ -1,0 +1,128 @@
+_info : 'https://docs.cloudscripting.com/1.6.2/'
+version: '1.6.2'
+type: update
+id: 'nodejs-php'
+name: 'Node.js and NPM for PHP'
+homepage: https://nodejs.org/en/
+baseUrl: https://raw.githubusercontent.com/jeversonmiotti/nodejs-php/master
+logo: https://raw.githubusercontent.com/jeversonmiotti/nodejs-php/master/node.png
+
+description:
+  short: Node.js® is a JavaScript runtime built on Chrome's V8 JavaScript engine. Node.js uses an event-driven, non-blocking I/O model that makes it lightweight and efficient. Node.js' package ecosystem, npm, is the largest ecosystem of open source libraries in the world.
+
+globals:
+  message: ""
+
+
+targetNodes:
+  nodeType:
+    - nginx
+    - nginxphp
+    - nginx-dockerized
+    - nginxphp-dockerized
+    - apache
+    - apache2
+    - nginx-ruby
+    - apache2-ruby
+    - litespeedphp
+
+settings:
+  main:
+    fields:
+    - type: list
+      name: version
+      caption: Node.js version
+      hideLabel: false
+      required: true
+      default: setup_20.x
+      values:
+        setup_18.x: 18.x
+        setup_20.x: 20.x LTS
+        setup_21.x: 21.x
+
+menu:
+  - caption: Change Version
+    loadingText: Installing..
+    settings: main
+    confirmText: Are you sure you wish to uninstall the current version and install a new one?
+    action: install
+
+onAfterRedeployContainer:
+  install:
+    name: Install Action
+
+onAfterAddNode:
+  install:
+    name: Install Action
+
+onAfterCloneNodes:
+  install:
+    name: Install Action
+
+onInstall:
+  install:
+    name: Install Action
+
+onUninstall:
+  uninstall:
+    name: Uninstall action
+
+actions:
+  appendMessage:
+    setGlobals:
+      message: ${globals.message}${this}
+
+  install:
+    - setGlobals:
+      - message: ""
+    - forEach(node:targetNodes):
+      - cmd [${@node.id}]:
+          - which rpm 2>&1 >/dev/null; if [ $? -gt 0 ]; then echo -e "Details::\nrpm not found"; exit 0; fi;
+          - which yum 2>&1 >/dev/null; if [ $? -gt 0 ]; then echo -e "Details::\nyum not found"; exit 0; fi;
+          - glibcMinVersion=2.28; 
+          - glibcVersion=$(rpm -q glibc | awk -F '-' '{print $2}'); if [ $(bc -l <<< "${glibcVersion/e/E} < ${glibcMinVersion/e/E}") -eq 1 ]; then echo -e "Details::\nglibc version ${glibcVersion} lower than the required ${glibcMinVersion}"; exit 0; fi;
+          - rpm -q yum-utils 2>&1 >/dev/null; if [ $? -ne 0 ]; then yum -y install yum-utils; fi;
+          - rpm -q nodejs 2>&1 >/dev/null; if [ $? -eq 0 ]; then yum -q -y remove nodejs 2>&1 >/dev/null; fi;
+          - tty -s && mesg n 2>&1;
+          - curl --silent --location https://rpm.nodesource.com/${settings.version} | bash - 2>/dev/null 1>/dev/null
+          - yum clean all && yum makecache;
+          - yumdownloader -q --url nodejs 2>/dev/null | xargs yum -y install 2>/dev/null 1>/dev/null; if [ $? -gt 0 ]; then echo -e "\nDetails::\nCan't install nodejs"; exit 0; fi;
+          - npm -g install npm@latest; if [ $? -gt 0 ]; then echo -e "\nDetails::\nCan't npm -g install npm@latest"; exit 0; fi;
+        sayYes: true
+        user: root
+      - appendMessage: ${response.out}
+      - cmd [${@node.id}]:
+          - echo -e "export PATH=$HOME/node_modules/.bin:$PATH" >> $HOME/.bashrc; if [ $? -gt 0 ]; then echo -e "\nDetails::\nCan't set export PATH"; exit 0; fi;
+        sayYes: true
+        user: jelastic
+      - appendMessage: ${response.out}
+    - if (globals.message.indexOf("Details::") !== -1):
+        message:  ${globals.message}
+        script: |
+          return {result: 2309, message: message.replace(/\n/g, '  \n')}
+
+
+  uninstall:
+    - setGlobals:
+      - message: ""
+    - forEach(node:targetNodes):
+      - cmd [${@node.id}]:
+          - rpm -e nodejs 2>&1;
+          - echo "";
+        sayYes: true
+        user: root
+      - cmd [${@node.id}]:
+          - rm -rf $HOME/node_modules 2>&1;
+          - sed -i "/node_modules/d" $HOME/.bashrc 2>&1;
+          - echo "";
+        sayYes: true
+        user: jelastic
+
+responses:
+  2308:
+    type: success
+  
+  2309:
+    type: error
+
+success: Node.js addon has been installed successfully.
